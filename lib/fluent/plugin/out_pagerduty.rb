@@ -23,6 +23,9 @@ class Fluent::PagerdutyOutput < Fluent::Output
     if @event_type == 'trigger' && @description.nil?
       $log.warn "pagerduty: description required for trigger event_type."
     end
+    if (@event_type == 'acknowledge' || @event_type == 'resolve') && @incident_key.nil?
+      $log.warn "pagerduty: incident_key required for acknowledge or resolve event_type."
+    end
   end
 
   def emit(tag, es, chain)
@@ -53,15 +56,26 @@ class Fluent::PagerdutyOutput < Fluent::Output
       options = {"details" => details}
       
       description = expander.expand(description, placeholders)
-      
-      if !@incident_key.nil?
-        incident_key = expander.expand(incident_key, placeholders)
-        api = PagerdutyIncident.new(service_key, incident_key)
-      else
-        api = Pagerduty.new(service_key)
-      end
+      if @event_type == 'trigger'
+        if !@incident_key.nil?
+          incident_key = expander.expand(incident_key, placeholders)
+          api = PagerdutyIncident.new(service_key, incident_key)
+        else
+          api = Pagerduty.new(service_key)
+        end
 
-      incident = api.trigger description, options
+        incident = api.trigger description, options
+      else
+        incident_key = expander.expand(incident_key, placeholders)
+        api = Pagerduty.new(service_key)
+        incident = api.get_incident(incident_key)
+        if @event_type == 'acknowledge'
+          incident.acknowledge
+        end
+        if @event_type == 'resolve'
+          incident.resolve
+        end
+      end
     rescue => e
       $log.error "pagerduty: request failed. ", :error_class=>e.class, :error=>e.message
     end
@@ -142,4 +156,3 @@ class PlaceholderExpander
     end
   end
 end
-
