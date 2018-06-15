@@ -23,8 +23,11 @@ class Fluent::PagerdutyOutput < Fluent::Output
     if @event_type == 'trigger' && @description.nil?
       $log.warn "pagerduty: description required for trigger event_type."
     end
-    if (@event_type == 'acknowledge' || @event_type == 'resolve') && @incident_key.nil?
-      $log.warn "pagerduty: incident_key required for acknowledge or resolve event_type."
+    if @event_type == 'acknowledge' && @incident_key.nil?
+      $log.warn "pagerduty: incident_key required for acknowledge event_type."
+    end
+    if @event_type == 'resolve' && @incident_key.nil?
+      $log.warn "pagerduty: incident_key required for resolve event_type."
     end
   end
 
@@ -66,15 +69,18 @@ class Fluent::PagerdutyOutput < Fluent::Output
 
         incident = api.trigger description, options
       else
-        incident_key = expander.expand(incident_key, placeholders)
-        api = Pagerduty.new(service_key)
-        incident = api.get_incident(incident_key)
-        if @event_type == 'acknowledge'
-          incident.acknowledge
+        if !@incident_key.nil?
+          incident_key = expander.expand(incident_key, placeholders)
+          api = Pagerduty.new(service_key)
+          incident = api.get_incident(incident_key)
+          if @event_type == 'acknowledge'
+            incident.acknowledge
+          end
+          if @event_type == 'resolve'
+            incident.resolve
+          end
         end
-        if @event_type == 'resolve'
-          incident.resolve
-        end
+        $log.warn "pagerduty: No Action Taken: resolve or acknowledge require an incident key"
       end
     rescue => e
       $log.error "pagerduty: request failed. ", :error_class=>e.class, :error=>e.message
